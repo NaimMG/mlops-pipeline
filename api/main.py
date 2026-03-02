@@ -1,24 +1,36 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import joblib
 import numpy as np
 import os
+import dagshub
+import mlflow.sklearn
 
 app = FastAPI(
     title="Fraud Detection API",
     description="API de détection de fraude bancaire — MLOps Pipeline",
-    version="1.0.0"
+    version="2.0.0"
 )
 
-# Chargement du modèle au démarrage
-MODEL_PATH = "models/best_model.pkl"
+# Connexion DagsHub + chargement depuis le Model Registry
+dagshub.init(repo_owner='NaimMG', repo_name='mlops-pipeline', mlflow=True)
 
-if os.path.exists(MODEL_PATH):
-    model = joblib.load(MODEL_PATH)
-    print("✅ Modèle chargé avec succès")
-else:
-    model = None
-    print("⚠️ Modèle non trouvé")
+MODEL_NAME = "fraud-detection-model"
+MODEL_ALIAS = "Production"
+
+try:
+    model = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{MODEL_ALIAS}")
+    print(f"✅ Modèle chargé depuis MLflow Registry ({MODEL_NAME}/{MODEL_ALIAS})")
+    print(f"   Features attendues : {model.n_features_in_}")
+except Exception as e:
+    print(f"⚠️ Impossible de charger depuis Registry : {e}")
+    # Fallback sur le fichier local
+    import joblib
+    if os.path.exists("models/best_model.pkl"):
+        model = joblib.load("models/best_model.pkl")
+        print("✅ Modèle chargé depuis fichier local (fallback)")
+    else:
+        model = None
+        print("❌ Aucun modèle disponible")
 
 
 class Transaction(BaseModel):
@@ -44,7 +56,8 @@ def root():
     return {
         "message": "Fraud Detection API",
         "status": "running",
-        "model_loaded": model is not None
+        "model_loaded": model is not None,
+        "model_source": "MLflow Registry"
     }
 
 
@@ -80,7 +93,3 @@ def predict(transaction: Transaction):
         probability=round(float(probability), 4),
         risk_level=risk
     )
-
-print("Model expects:", model.n_features_in_)
-if hasattr(model, 'feature_names_in_'):
-    print("Feature names:", model.feature_names_in_)
