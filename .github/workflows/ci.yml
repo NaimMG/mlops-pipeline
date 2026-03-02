@@ -1,0 +1,61 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install dependencies
+      run: |
+        pip install fastapi uvicorn pydantic joblib numpy scikit-learn pytest httpx
+
+    - name: Create dummy model for tests
+      run: |
+        python -c "
+        import joblib, os
+        from sklearn.ensemble import RandomForestClassifier
+        import numpy as np
+        os.makedirs('models', exist_ok=True)
+        model = RandomForestClassifier(n_estimators=2, random_state=42)
+        X = np.random.rand(10, 29)
+        y = [0,1,0,0,1,0,0,1,0,0]
+        model.fit(X, y)
+        joblib.dump(model, 'models/best_model.pkl')
+        print('Dummy model created')
+        "
+
+    - name: Run API tests
+      run: pytest tests/ -v
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Build Docker image
+      run: docker build -t fraud-detection-api .
+
+    - name: Test Docker image
+      run: |
+        docker run -d -p 8000:8000 --name test-api fraud-detection-api
+        sleep 5
+        curl -f http://localhost:8000/health
+        docker stop test-api
