@@ -21,7 +21,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install fastapi uvicorn pydantic joblib numpy scikit-learn pytest httpx
+        pip install fastapi uvicorn pydantic joblib numpy scikit-learn pytest httpx dagshub mlflow
 
     - name: Create dummy model for tests
       run: |
