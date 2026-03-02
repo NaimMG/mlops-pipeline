@@ -82,4 +82,5 @@ def predict(transaction: Transaction):
     )
 
 print("Model expects:", model.n_features_in_)
-print("Feature names:", model.feature_names_in_)
+if hasattr(model, 'feature_names_in_'):
+    print("Feature names:", model.feature_names_in_)

@@ -26,13 +26,14 @@ jobs:
     - name: Create dummy model for tests
       run: |
         python -c "
-        import joblib, os
+        import joblib, os, pandas as pd
         from sklearn.ensemble import RandomForestClassifier
         import numpy as np
         os.makedirs('models', exist_ok=True)
-        model = RandomForestClassifier(n_estimators=2, random_state=42)
-        X = np.random.rand(10, 29)
+        cols = [f'V{i}' for i in range(1,29)] + ['Amount']
+        X = pd.DataFrame(np.random.rand(10, 29), columns=cols)
         y = [0,1,0,0,1,0,0,1,0,0]
+        model = RandomForestClassifier(n_estimators=2, random_state=42)
         model.fit(X, y)
         joblib.dump(model, 'models/best_model.pkl')
         print('Dummy model created')
