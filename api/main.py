@@ -1,9 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import numpy as np
+import joblib
 import os
-import dagshub
-import mlflow.sklearn
 
 app = FastAPI(
     title="Fraud Detection API",
@@ -11,36 +10,36 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Connexion DagsHub + chargement depuis le Model Registry
-dagshub.init(repo_owner='NaimMG', repo_name='mlops-pipeline', mlflow=True)
+model = None
 
-MODEL_NAME = "fraud-detection-model"
-MODEL_ALIAS = "Production"
+def load_model():
+    global model
 
-try:
-    model = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{MODEL_ALIAS}")
-    print(f"✅ Modèle chargé depuis MLflow Registry ({MODEL_NAME}/{MODEL_ALIAS})")
-    print(f"   Features attendues : {model.n_features_in_}")
-except Exception as e:
-    print(f"⚠️ Impossible de charger depuis Registry : {e}")
-    # Fallback sur le fichier local
-    import joblib
+    if os.getenv("MLFLOW_TRACKING_URI"):
+        try:
+            import dagshub
+            import mlflow.sklearn
+            dagshub.init(repo_owner='NaimMG', repo_name='mlops-pipeline', mlflow=True)
+            model = mlflow.sklearn.load_model("models:/fraud-detection-model/Production")
+            print("✅ Modèle chargé depuis MLflow Registry")
+            return
+        except Exception as e:
+            print(f"⚠️ Registry indisponible : {e}")
+
     if os.path.exists("models/best_model.pkl"):
         model = joblib.load("models/best_model.pkl")
-        print("✅ Modèle chargé depuis fichier local (fallback)")
+        print("✅ Modèle chargé depuis fichier local")
     else:
-        model = None
         print("❌ Aucun modèle disponible")
+
+load_model()
 
 
 class Transaction(BaseModel):
     features: list[float]
-
     model_config = {
         "json_schema_extra": {
-            "examples": [{
-                "features": [0.1] * 29
-            }]
+            "examples": [{"features": [0.1] * 29}]
         }
     }
 
@@ -56,15 +55,12 @@ def root():
     return {
         "message": "Fraud Detection API",
         "status": "running",
-        "model_loaded": model is not None,
-        "model_source": "MLflow Registry"
+        "model_loaded": model is not None
     }
-
 
 @app.get("/health")
 def health():
     return {"status": "healthy", "model_loaded": model is not None}
-
 
 @app.post("/predict", response_model=Prediction)
 def predict(transaction: Transaction):
@@ -81,12 +77,7 @@ def predict(transaction: Transaction):
     prediction = model.predict(features)[0]
     probability = model.predict_proba(features)[0][1]
 
-    if probability < 0.3:
-        risk = "LOW"
-    elif probability < 0.7:
-        risk = "MEDIUM"
-    else:
-        risk = "HIGH"
+    risk = "LOW" if probability < 0.3 else "MEDIUM" if probability < 0.7 else "HIGH"
 
     return Prediction(
         is_fraud=bool(prediction),
