@@ -1,5 +1,6 @@
 venv/
-/data/
+
 .env
 reports/*.html
 logs/
+/data
