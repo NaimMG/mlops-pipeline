@@ -58,7 +58,11 @@ jobs:
 
     - name: Test Docker image
       run: |
-        docker run -d -p 8000:8000 --name test-api fraud-detection-api
-        sleep 15
+        docker run -d -p 8000:8000 --name test-api \
+          -e MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }} \
+          -e MLFLOW_TRACKING_USERNAME=${{ secrets.DAGSHUB_USERNAME }} \
+          -e MLFLOW_TRACKING_PASSWORD=${{ secrets.DAGSHUB_TOKEN }} \
+          fraud-detection-api
+        sleep 90
         curl -f http://localhost:8000/health
         docker stop test-api
