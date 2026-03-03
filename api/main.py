@@ -3,6 +3,9 @@ from pydantic import BaseModel
 import numpy as np
 import joblib
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import MODEL_PATH, MODEL_NAME, FRAUD_THRESHOLD, MLFLOW_TRACKING_URI
 
 app = FastAPI(
     title="Fraud Detection API",
@@ -15,20 +18,20 @@ model = None
 def load_model():
     global model
 
-    if os.getenv("MLFLOW_TRACKING_URI"):
+    if MLFLOW_TRACKING_URI:
         try:
             import dagshub
             import mlflow.sklearn
             dagshub.init(repo_owner='NaimMG', repo_name='mlops-pipeline', mlflow=True)
-            model = mlflow.sklearn.load_model("models:/fraud-detection-model/Production")
+            model = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/Production")
             print("✅ Modèle chargé depuis MLflow Registry")
             return
         except Exception as e:
             print(f"⚠️ Registry indisponible : {e}")
 
-    if os.path.exists("models/best_model.pkl"):
-        model = joblib.load("models/best_model.pkl")
-        print("✅ Modèle chargé depuis fichier local")
+    if os.path.exists(MODEL_PATH):
+        model = joblib.load(MODEL_PATH)
+        print(f"✅ Modèle chargé depuis {MODEL_PATH}")
     else:
         print("❌ Aucun modèle disponible")
 
@@ -55,7 +58,8 @@ def root():
     return {
         "message": "Fraud Detection API",
         "status": "running",
-        "model_loaded": model is not None
+        "model_loaded": model is not None,
+        "fraud_threshold": FRAUD_THRESHOLD
     }
 
 @app.get("/health")
@@ -77,10 +81,18 @@ def predict(transaction: Transaction):
     prediction = model.predict(features)[0]
     probability = model.predict_proba(features)[0][1]
 
-    risk = "LOW" if probability < 0.3 else "MEDIUM" if probability < 0.7 else "HIGH"
+    # Utilise le seuil configurable
+    is_fraud = probability >= FRAUD_THRESHOLD
+
+    if probability < 0.3:
+        risk = "LOW"
+    elif probability < 0.7:
+        risk = "MEDIUM"
+    else:
+        risk = "HIGH"
 
     return Prediction(
-        is_fraud=bool(prediction),
+        is_fraud=bool(is_fraud),
         probability=round(float(probability), 4),
         risk_level=risk
     )
